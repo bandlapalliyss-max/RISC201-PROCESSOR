@@ -1,0 +1,25 @@
+# Compiled binaries
+risc201_sim
+risc201_as
+risc201_disasm
+risc201_eval
+
+# Generated output files
+benchmarks/*.hex
+benchmarks/*.bin
+*.hex
+*.bin
+
+# Object files
+*.o
+*.a
+
+# Editor/IDE artifacts
+.vscode/
+.idea/
+*.swp
+*~
+
+# OS artifacts
+.DS_Store
+Thumbs.db
