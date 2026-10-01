@@ -259,19 +259,11 @@ public:
                 }
             }
 
-            // If forwarding is disabled, stall for ANY RAW dependency until previous instruction clears MA_RW
+            // If forwarding is disabled, stall for ANY RAW dependency until previous instruction clears EX
             bool rawHazardNoForward = false;
             if (!forwardingEnabled) {
                 if (!l_OF_EX.isBubble && l_OF_EX.decoded.writesRegister()) {
                     RegId dest = l_OF_EX.decoded.getDestReg();
-                    if ((d.readsRs1() && d.rs1 == dest) ||
-                        (d.readsRs2() && d.rs2 == dest) ||
-                        (d.isStore() && d.rd == dest)) {
-                        rawHazardNoForward = true;
-                    }
-                }
-                if (!l_EX_MARW.isBubble && l_EX_MARW.decoded.writesRegister()) {
-                    RegId dest = l_EX_MARW.decoded.getDestReg();
                     if ((d.readsRs1() && d.rs1 == dest) ||
                         (d.readsRs2() && d.rs2 == dest) ||
                         (d.isStore() && d.rd == dest)) {
@@ -348,15 +340,13 @@ public:
             pc += 4;
         }
 
-        // If bubble requested for EX stage (interlock)
-        if (bubble_EX) {
-            next_EX_MARW.reset();
-        }
-
         // Commit synchronous latch updates
-        if (!stall_OF) {
+        if (bubble_EX) {
+            l_OF_EX.reset();
+        } else if (!stall_OF) {
             l_OF_EX = next_OF_EX;
         }
+
         if (!stall_IF) {
             l_IF_OF = next_IF_OF;
         }

@@ -39,7 +39,7 @@ std::string readFile(const std::string& path) {
     return buffer.str();
 }
 
-int main(int argc, char* argv[]) {
+int main() {
     std::cout << "========================================================================\n";
     std::cout << "        RISC201 PROCESSOR DESIGN & EVALUATION COMPARISON SUITE          \n";
     std::cout << "========================================================================\n\n";

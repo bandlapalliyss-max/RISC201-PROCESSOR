@@ -293,7 +293,6 @@ public:
                 };
                 if (!l_RF_EX.isBubble && checkConflict(l_RF_EX.decoded)) rawNoForward = true;
                 if (!l_EX_MA.isBubble && checkConflict(l_EX_MA.decoded)) rawNoForward = true;
-                if (!l_MA_RW.isBubble && checkConflict(l_MA_RW.decoded)) rawNoForward = true;
             }
 
             if (loadUse || rawNoForward) {
@@ -380,12 +379,13 @@ public:
             pc += 4;
         }
 
+        // Latch synchronous updates
         if (bubble_EX) {
-            next_RF_EX.reset();
+            l_RF_EX.reset();
+        } else if (!stall_RF) {
+            l_RF_EX = next_RF_EX;
         }
 
-        // Latch synchronous updates
-        if (!stall_RF) l_RF_EX = next_RF_EX;
         if (!stall_ID) l_ID_RF = next_ID_RF;
         if (!stall_IF) l_IF_ID = next_IF_ID;
         l_EX_MA = next_EX_MA;

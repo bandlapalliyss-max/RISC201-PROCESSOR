@@ -29,6 +29,9 @@ public:
             d.opcode == OP_CALL || d.opcode == OP_RET || d.opcode == OP_NOP ||
             d.opcode == OP_RETZ) {
             d.format = InstFormat::BRANCH;
+            if (d.opcode == OP_RET) {
+                d.rs1 = REG_RA;
+            }
             int32_t offset27 = static_cast<int32_t>(word & 0x07FFFFFF);
             // Sign-extend 27-bit signed word offset
             if (offset27 & 0x04000000) offset27 |= 0xF8000000;

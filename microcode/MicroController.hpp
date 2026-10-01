@@ -135,7 +135,7 @@ public:
         emit(MicroOp::MSWITCH, MicroReg::NONE, MicroReg::NONE, 0, 0, FunctionalArg::NONE, "mswitch");
 
         // Helper for 3-address ALU instructions (add, sub, mul, div, mod, and, or, lsl, lsr, asr)
-        auto emitAlu3Op = [&](Opcode op, FunctionalArg arg, const std::string& opName) {
+        auto emitAlu3Op = [&](Opcode op, FunctionalArg arg, [[maybe_unused]] const std::string& opName) {
             uint16_t startAddr = static_cast<uint16_t>(controlStoreVertical.size());
             opcodeDispatchTable[op] = startAddr;
 
