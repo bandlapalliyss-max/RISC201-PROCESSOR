@@ -65,7 +65,8 @@ public:
         hword.disassembly = vinst.disassembly;
 
         // Map source register to write-bus enable
-        switch (vinst.src) {
+        MicroReg readReg = (vinst.type == MicroOp::MBEQ && vinst.src == MicroReg::NONE) ? vinst.dest : vinst.src;
+        switch (readReg) {
             case MicroReg::PC: hword.setSignal(HorizontalControlWord::CB_PC_OUT); break;
             case MicroReg::IR: hword.setSignal(HorizontalControlWord::CB_IR_OUT); break;
             case MicroReg::I_BIT: hword.setSignal(HorizontalControlWord::CB_I_OUT); break;
@@ -88,19 +89,21 @@ public:
             default: break;
         }
 
-        // Map dest register to read-bus enable
-        switch (vinst.dest) {
-            case MicroReg::PC: hword.setSignal(HorizontalControlWord::CB_PC_IN); break;
-            case MicroReg::REG_SRC: hword.setSignal(HorizontalControlWord::CB_REG_SRC_IN); break;
-            case MicroReg::REG_DATA: hword.setSignal(HorizontalControlWord::CB_REG_DATA_IN); break;
-            case MicroReg::REG_VAL: hword.setSignal(HorizontalControlWord::CB_REG_VAL_IN); break;
-            case MicroReg::A: hword.setSignal(HorizontalControlWord::CB_A_IN); break;
-            case MicroReg::B: hword.setSignal(HorizontalControlWord::CB_B_IN); break;
-            case MicroReg::ALU_RESULT: hword.setSignal(HorizontalControlWord::CB_ALU_RES_IN); break;
-            case MicroReg::MAR: hword.setSignal(HorizontalControlWord::CB_MAR_IN); break;
-            case MicroReg::MDR: hword.setSignal(HorizontalControlWord::CB_MDR_IN); break;
-            case MicroReg::LD_RESULT: hword.setSignal(HorizontalControlWord::CB_LD_RES_IN); break;
-            default: break;
+        // Map dest register to read-bus enable (only for instructions that write to dest)
+        if (vinst.type != MicroOp::MBEQ && vinst.type != MicroOp::MB) {
+            switch (vinst.dest) {
+                case MicroReg::PC: hword.setSignal(HorizontalControlWord::CB_PC_IN); break;
+                case MicroReg::REG_SRC: hword.setSignal(HorizontalControlWord::CB_REG_SRC_IN); break;
+                case MicroReg::REG_DATA: hword.setSignal(HorizontalControlWord::CB_REG_DATA_IN); break;
+                case MicroReg::REG_VAL: hword.setSignal(HorizontalControlWord::CB_REG_VAL_IN); break;
+                case MicroReg::A: hword.setSignal(HorizontalControlWord::CB_A_IN); break;
+                case MicroReg::B: hword.setSignal(HorizontalControlWord::CB_B_IN); break;
+                case MicroReg::ALU_RESULT: hword.setSignal(HorizontalControlWord::CB_ALU_RES_IN); break;
+                case MicroReg::MAR: hword.setSignal(HorizontalControlWord::CB_MAR_IN); break;
+                case MicroReg::MDR: hword.setSignal(HorizontalControlWord::CB_MDR_IN); break;
+                case MicroReg::LD_RESULT: hword.setSignal(HorizontalControlWord::CB_LD_RES_IN); break;
+                default: break;
+            }
         }
 
         // Transfer multiplexer & ufetch multiplexer configuration based on micro-opcode

@@ -3,6 +3,7 @@ risc201_sim
 risc201_as
 risc201_disasm
 risc201_eval
+*.exe
 
 # Generated output files
 benchmarks/*.hex

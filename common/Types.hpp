@@ -60,6 +60,12 @@ enum Opcode : uint8_t {
     // Privileged extension opcodes
     OP_MOVZ = 0b10101, // 21: movz (transfer privileged <-> general registers)
     OP_RETZ = 0b10110, // 22: retz (PC <- oldPC, CPL <- 1)
+    // Custom Architectural Extensions
+    OP_MIN  = 0b10111, // 23: min  rd, rs1, (rs2/imm)
+    OP_MAX  = 0b11000, // 24: max  rd, rs1, (rs2/imm)
+    OP_ROTS = 0b11001, // 25: rots rd, rs1, (rs2/imm) (circular right shift)
+    OP_CBEQ = 0b11010, // 26: cbeq rs1, (rs2/imm), offset (fused compare & branch if equal)
+    OP_CBGT = 0b11011, // 27: cbgt rs1, (rs2/imm), offset (fused compare & branch if greater)
     OP_INVALID = 0b11111
 };
 
@@ -100,11 +106,17 @@ struct DecodedInst {
     // Helper query functions
     bool isBranch() const {
         return opcode == OP_B || opcode == OP_BEQ || opcode == OP_BGT ||
-               opcode == OP_CALL || opcode == OP_RET || opcode == OP_RETZ;
+               opcode == OP_CALL || opcode == OP_RET || opcode == OP_RETZ ||
+               opcode == OP_CBEQ || opcode == OP_CBGT;
     }
 
     bool isConditionalBranch() const {
-        return opcode == OP_BEQ || opcode == OP_BGT;
+        return opcode == OP_BEQ || opcode == OP_BGT ||
+               opcode == OP_CBEQ || opcode == OP_CBGT;
+    }
+
+    bool isCompareBranch() const {
+        return opcode == OP_CBEQ || opcode == OP_CBGT;
     }
 
     bool isCall() const {
@@ -131,7 +143,8 @@ struct DecodedInst {
     // Sarangi Section 9.3: isWb is true for ALU, mov, ld, and call (writes ra)
     bool writesRegister() const {
         if (opcode == OP_NOP || opcode == OP_ST || opcode == OP_CMP ||
-            opcode == OP_B || opcode == OP_BEQ || opcode == OP_BGT || opcode == OP_RET || opcode == OP_RETZ) {
+            opcode == OP_B || opcode == OP_BEQ || opcode == OP_BGT || opcode == OP_RET || opcode == OP_RETZ ||
+            opcode == OP_CBEQ || opcode == OP_CBGT) {
             return false;
         }
         return true;

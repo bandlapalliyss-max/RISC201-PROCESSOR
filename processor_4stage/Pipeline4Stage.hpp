@@ -6,6 +6,7 @@
 #include "../common/RegisterFile.hpp"
 #include "../common/Memory.hpp"
 #include "../common/Exception.hpp"
+#include "../common/BranchPredictor.hpp"
 #include "../alu/ALU.hpp"
 #include "../assembler/Disassembler.hpp"
 #include "../visualizer/PipelineVisualizer.hpp"
@@ -32,6 +33,7 @@ public:
     RegisterFile regFile;
     Memory memory;
     alu::ALU aluUnit;
+    BranchPredictor branchPredictor;
 
     // Architectural state
     Word pc{0};
@@ -69,6 +71,7 @@ public:
     void reset() {
         regFile.reset();
         memory.reset();
+        branchPredictor.reset();
         pc = 0;
         programSize = 0;
         halted = false;
@@ -92,6 +95,8 @@ public:
     void setProgramSize(Word sz) { programSize = sz; }
     void setForwarding(bool enable) { forwardingEnabled = enable; }
     bool isForwardingEnabled() const { return forwardingEnabled; }
+    void setBranchPredictorMode(BranchPredictorMode m) { branchPredictor.setMode(m); }
+    BranchPredictorMode getBranchPredictorMode() const { return branchPredictor.getMode(); }
 
     // Check if pipeline has completely drained (no valid instructions in flight)
     bool isDrained() const {
@@ -212,6 +217,12 @@ public:
                 } else if (d.opcode == OP_BGT) {
                     isBranchTaken = flg.GT;
                     branchPC = l_OF_EX.branchTarget;
+                } else if (d.opcode == OP_CBEQ) {
+                    isBranchTaken = (opA == opB);
+                    branchPC = l_OF_EX.branchTarget;
+                } else if (d.opcode == OP_CBGT) {
+                    isBranchTaken = (static_cast<int32_t>(opA) > static_cast<int32_t>(opB));
+                    branchPC = l_OF_EX.branchTarget;
                 } else if (d.opcode == OP_CALL) {
                     isBranchTaken = true;
                     branchPC = l_OF_EX.branchTarget;
@@ -227,6 +238,8 @@ public:
                 if (isBranchTaken) {
                     branchTakenCount++;
                 }
+
+                branchPredictor.update(l_OF_EX.pc, isBranchTaken, branchPC, l_OF_EX.predictedTaken);
             }
 
             // Prepare next EX_MARW latch
@@ -305,6 +318,8 @@ public:
                 next_OF_EX.immx = d.immx;
                 next_OF_EX.branchTarget = d.branchTarget;
                 next_OF_EX.isImmediate = d.isImmediate;
+                next_OF_EX.predictedTaken = l_IF_OF.predictedTaken;
+                next_OF_EX.predictedTarget = l_IF_OF.predictedTarget;
                 next_OF_EX.isBubble = false;
                 next_OF_EX.disassembly = l_IF_OF.disassembly;
             }
@@ -315,10 +330,18 @@ public:
         // =========================================================================
         // STAGE 1: IF (Instruction Fetch)
         // =========================================================================
-        if (isBranchTaken) {
-            // Branch penalty / flush: Branch was taken in EX stage
-            // Instructions currently in IF_OF and newly decoded OF_EX must be flushed
-            pc = branchPC;
+        bool mispredicted = false;
+        if (!l_OF_EX.isBubble && l_OF_EX.decoded.isBranch()) {
+            if (isBranchTaken != l_OF_EX.predictedTaken) {
+                mispredicted = true;
+            } else if (isBranchTaken && branchPC != l_OF_EX.predictedTarget) {
+                mispredicted = true;
+            }
+        }
+
+        if (mispredicted) {
+            // Branch misprediction penalty / flush
+            pc = isBranchTaken ? branchPC : (l_OF_EX.pc + 4);
             next_IF_OF.reset(); // Flush IF
             next_OF_EX.reset(); // Flush OF
             bubbleCycles += 2;
@@ -332,12 +355,21 @@ public:
                 return;
             }
 
-            next_IF_OF.pc = pc;
+            Word fetchPC = pc;
+            auto pred = branchPredictor.predict(fetchPC);
+
+            next_IF_OF.pc = fetchPC;
             next_IF_OF.instruction = instWord;
             next_IF_OF.isBubble = false;
-            next_IF_OF.disassembly = assembler::Disassembler::disassemble(instWord, pc);
+            next_IF_OF.predictedTaken = pred.predictedTaken;
+            next_IF_OF.predictedTarget = pred.predictedTarget;
+            next_IF_OF.disassembly = assembler::Disassembler::disassemble(instWord, fetchPC);
 
-            pc += 4;
+            if (pred.predictedTaken) {
+                pc = pred.predictedTarget;
+            } else {
+                pc += 4;
+            }
         }
 
         // Commit synchronous latch updates
@@ -386,7 +418,8 @@ public:
             << "Branch Bubble Cycles    : " << bubbleCycles << "\n"
             << "Total Branches          : " << branchCount << "\n"
             << "Taken Branches          : " << branchTakenCount << "\n"
-            << "Forwarding Enabled      : " << (forwardingEnabled ? "YES" : "NO (Interlocks only)") << "\n";
+            << "Forwarding Enabled      : " << (forwardingEnabled ? "YES" : "NO (Interlocks only)") << "\n"
+            << branchPredictor.printStats();
         return oss.str();
     }
 };

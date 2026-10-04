@@ -131,6 +131,12 @@ public:
 
         return current;
     }
+
+    static Word rotateRight(Word val, Word shiftAmount) {
+        uint8_t shamt = static_cast<uint8_t>(shiftAmount & 0x1F);
+        if (shamt == 0) return val;
+        return (val >> shamt) | (val << (32 - shamt));
+    }
 };
 
 } // namespace alu

@@ -1,5 +1,5 @@
 CXX = g++
-CXXFLAGS = -std=c++17 -Wall -Wextra -O2 -I.
+CXXFLAGS = -std=c++14 -Wall -Wextra -O2 -I.
 
 TARGETS = risc201_sim risc201_as risc201_disasm risc201_eval
 
@@ -18,6 +18,6 @@ risc201_eval: evaluation/CompareProcessors.cpp common/*.hpp alu/*.hpp microcode/
 	$(CXX) $(CXXFLAGS) evaluation/CompareProcessors.cpp -o risc201_eval
 
 clean:
-	rm -f $(TARGETS) *.hex *.bin
+	rm -f $(TARGETS) *.exe *.hex *.bin
 
 .PHONY: all clean

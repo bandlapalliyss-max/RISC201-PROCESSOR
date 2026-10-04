@@ -139,9 +139,11 @@ inline std::tuple<Word, Word, bool> divideSigned(Word n, Word d, bool useNonRest
     Word absN = nNeg ? std::get<0>(subtract32(0, n)) : n;
     Word absD = dNeg ? std::get<0>(subtract32(0, d)) : d;
 
-    auto [quot, rem, divZero] = useNonRestoring ?
+    auto divResult = useNonRestoring ?
         nonRestoringDivideUnsigned(absN, absD) :
         restoringDivideUnsigned(absN, absD);
+    Word quot = std::get<0>(divResult);
+    Word rem = std::get<1>(divResult);
 
     // Quotient is negative if sign(N) != sign(D)
     if (nNeg ^ dNeg) {

@@ -98,7 +98,10 @@ enum class FunctionalArg : uint16_t {
     ALU_MOV = (1 << 7) | OP_MOV,
     ALU_LSL = (1 << 7) | OP_LSL,
     ALU_LSR = (1 << 7) | OP_LSR,
-    ALU_ASR = (1 << 7) | OP_ASR
+    ALU_ASR = (1 << 7) | OP_ASR,
+    ALU_MIN = (1 << 7) | OP_MIN,
+    ALU_MAX = (1 << 7) | OP_MAX,
+    ALU_ROTS = (1 << 7) | OP_ROTS
 };
 
 inline std::string functionalArgName(FunctionalArg arg) {
@@ -120,6 +123,9 @@ inline std::string functionalArgName(FunctionalArg arg) {
         case FunctionalArg::ALU_LSL: return "<lsl>";
         case FunctionalArg::ALU_LSR: return "<lsr>";
         case FunctionalArg::ALU_ASR: return "<asr>";
+        case FunctionalArg::ALU_MIN: return "<min>";
+        case FunctionalArg::ALU_MAX: return "<max>";
+        case FunctionalArg::ALU_ROTS: return "<rots>";
         default: return "";
     }
 }

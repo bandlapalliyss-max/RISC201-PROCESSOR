@@ -135,7 +135,8 @@ public:
         emit(MicroOp::MSWITCH, MicroReg::NONE, MicroReg::NONE, 0, 0, FunctionalArg::NONE, "mswitch");
 
         // Helper for 3-address ALU instructions (add, sub, mul, div, mod, and, or, lsl, lsr, asr)
-        auto emitAlu3Op = [&](Opcode op, FunctionalArg arg, [[maybe_unused]] const std::string& opName) {
+        auto emitAlu3Op = [&](Opcode op, FunctionalArg arg, const std::string& opName) {
+            (void)opName;
             uint16_t startAddr = static_cast<uint16_t>(controlStoreVertical.size());
             opcodeDispatchTable[op] = startAddr;
 
@@ -173,6 +174,9 @@ public:
         emitAlu3Op(OP_LSL, FunctionalArg::ALU_LSL, "lsl");
         emitAlu3Op(OP_LSR, FunctionalArg::ALU_LSR, "lsr");
         emitAlu3Op(OP_ASR, FunctionalArg::ALU_ASR, "asr");
+        emitAlu3Op(OP_MIN, FunctionalArg::ALU_MIN, "min");
+        emitAlu3Op(OP_MAX, FunctionalArg::ALU_MAX, "max");
+        emitAlu3Op(OP_ROTS, FunctionalArg::ALU_ROTS, "rots");
 
         // --- MOV (Opcode 9) ---
         {
@@ -301,6 +305,40 @@ public:
             emit(MicroOp::MMOV, MicroReg::PC, MicroReg::REG_VAL, 0, 0, FunctionalArg::NONE, "mmov pc, regVal");
             emit(MicroOp::MB, MicroReg::NONE, MicroReg::NONE, 0, 0, FunctionalArg::NONE, "mb .begin");
         }
+
+        // --- CBEQ (Opcode 26) ---
+        {
+            uint16_t start = static_cast<uint16_t>(controlStoreVertical.size());
+            opcodeDispatchTable[OP_CBEQ] = start;
+            emit(MicroOp::MMOV, MicroReg::REG_SRC, MicroReg::RS1, 0, 0, FunctionalArg::REG_READ, "mmov regSrc, rs1, <read>");
+            emit(MicroOp::MMOV, MicroReg::A, MicroReg::REG_VAL, 0, 0, FunctionalArg::NONE, "mmov A, regVal");
+            emit(MicroOp::MBEQ, MicroReg::I_BIT, MicroReg::NONE, 1, start + 6, FunctionalArg::NONE, "mbeq I, 1, .imm");
+            emit(MicroOp::MMOV, MicroReg::REG_SRC, MicroReg::RS2, 0, 0, FunctionalArg::REG_READ, "mmov regSrc, rs2, <read>");
+            emit(MicroOp::MMOV, MicroReg::B, MicroReg::REG_VAL, 0, 0, FunctionalArg::ALU_CMP, "mmov B, regVal, <cmp>");
+            emit(MicroOp::MB, MicroReg::NONE, MicroReg::NONE, 0, start + 7, FunctionalArg::NONE, "mb .check");
+            emit(MicroOp::MMOV, MicroReg::B, MicroReg::IMMX, 0, 0, FunctionalArg::ALU_CMP, "mmov B, immx, <cmp>");
+            emit(MicroOp::MBEQ, MicroReg::FLAGS_E, MicroReg::NONE, 1, start + 9, FunctionalArg::NONE, "mbeq flags.E, 1, .branch");
+            emit(MicroOp::MB, MicroReg::NONE, MicroReg::NONE, 0, 0, FunctionalArg::NONE, "mb .begin");
+            emit(MicroOp::MMOV, MicroReg::PC, MicroReg::BRANCH_TARGET, 0, 0, FunctionalArg::NONE, "mmov pc, branchTarget");
+            emit(MicroOp::MB, MicroReg::NONE, MicroReg::NONE, 0, 0, FunctionalArg::NONE, "mb .begin");
+        }
+
+        // --- CBGT (Opcode 27) ---
+        {
+            uint16_t start = static_cast<uint16_t>(controlStoreVertical.size());
+            opcodeDispatchTable[OP_CBGT] = start;
+            emit(MicroOp::MMOV, MicroReg::REG_SRC, MicroReg::RS1, 0, 0, FunctionalArg::REG_READ, "mmov regSrc, rs1, <read>");
+            emit(MicroOp::MMOV, MicroReg::A, MicroReg::REG_VAL, 0, 0, FunctionalArg::NONE, "mmov A, regVal");
+            emit(MicroOp::MBEQ, MicroReg::I_BIT, MicroReg::NONE, 1, start + 6, FunctionalArg::NONE, "mbeq I, 1, .imm");
+            emit(MicroOp::MMOV, MicroReg::REG_SRC, MicroReg::RS2, 0, 0, FunctionalArg::REG_READ, "mmov regSrc, rs2, <read>");
+            emit(MicroOp::MMOV, MicroReg::B, MicroReg::REG_VAL, 0, 0, FunctionalArg::ALU_CMP, "mmov B, regVal, <cmp>");
+            emit(MicroOp::MB, MicroReg::NONE, MicroReg::NONE, 0, start + 7, FunctionalArg::NONE, "mb .check");
+            emit(MicroOp::MMOV, MicroReg::B, MicroReg::IMMX, 0, 0, FunctionalArg::ALU_CMP, "mmov B, immx, <cmp>");
+            emit(MicroOp::MBEQ, MicroReg::FLAGS_GT, MicroReg::NONE, 1, start + 9, FunctionalArg::NONE, "mbeq flags.GT, 1, .branch");
+            emit(MicroOp::MB, MicroReg::NONE, MicroReg::NONE, 0, 0, FunctionalArg::NONE, "mb .begin");
+            emit(MicroOp::MMOV, MicroReg::PC, MicroReg::BRANCH_TARGET, 0, 0, FunctionalArg::NONE, "mmov pc, branchTarget");
+            emit(MicroOp::MB, MicroReg::NONE, MicroReg::NONE, 0, 0, FunctionalArg::NONE, "mb .begin");
+        }
     }
 
     /**
@@ -424,7 +462,20 @@ public:
 
 private:
     void decodeInstruction(Word instWord) {
+        Opcode op = static_cast<Opcode>((instWord >> 27) & 0x1F);
         i_bit = (instWord >> 26) & 1;
+
+        if (op == OP_CBEQ || op == OP_CBGT) {
+            rd = 0;
+            rs1 = (instWord >> 22) & 0xF;
+            rs2 = (instWord >> 18) & 0xF;
+            int32_t offset18 = static_cast<int32_t>(instWord & 0x3FFFF);
+            if (offset18 & 0x20000) offset18 |= 0xFFFC0000;
+            branchTarget = pc + (offset18 << 2);
+            immx = rs2; // immediate is 4-bit unsigned in rs2 field
+            return;
+        }
+
         rd = (instWord >> 22) & 0xF;
         rs1 = (instWord >> 18) & 0xF;
         rs2 = (instWord >> 14) & 0xF;

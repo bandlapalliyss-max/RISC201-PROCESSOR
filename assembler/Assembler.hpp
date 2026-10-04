@@ -235,6 +235,28 @@ public:
                 return w;
             };
 
+            // Helper to encode fused compare-and-branch format:
+            // [31:27] opcode, [26] I, [25:22] rs1, [21:18] rs2/imm4, [17:0] offset18
+            auto encodeCompareBranchReg = [](Opcode op, RegId rs1, RegId rs2, int32_t wordOffset) -> Word {
+                Word w = 0;
+                w |= (static_cast<Word>(op) & 0x1F) << 27;
+                w |= (0u) << 26; // I = 0
+                w |= (static_cast<Word>(rs1) & 0xF) << 22;
+                w |= (static_cast<Word>(rs2) & 0xF) << 18;
+                w |= (static_cast<Word>(wordOffset) & 0x3FFFF);
+                return w;
+            };
+
+            auto encodeCompareBranchImm = [](Opcode op, RegId rs1, int8_t imm4, int32_t wordOffset) -> Word {
+                Word w = 0;
+                w |= (static_cast<Word>(op) & 0x1F) << 27;
+                w |= (1u) << 26; // I = 1
+                w |= (static_cast<Word>(rs1) & 0xF) << 22;
+                w |= (static_cast<Word>(imm4) & 0xF) << 18;
+                w |= (static_cast<Word>(wordOffset) & 0x3FFFF);
+                return w;
+            };
+
             // 1. NOP
             if (baseMnemonic == "nop") {
                 code = encodeBranch(OP_NOP, 0);
@@ -266,6 +288,38 @@ public:
                 else if (baseMnemonic == "call") op = OP_CALL;
 
                 code = encodeBranch(op, wordOffset);
+            }
+            // 4b. Fused Compare-and-Branch: cbeq rs1, (rs2/imm), label | cbgt rs1, (rs2/imm), label
+            else if (baseMnemonic == "cbeq" || baseMnemonic == "cbgt") {
+                if (tokens.size() < 4) throw std::runtime_error("Malformed compare-and-branch: " + text);
+                RegId rs1 = parseRegister(tokens[1]);
+                std::string op2 = tokens[2];
+                std::string targetLabel = tokens[3];
+
+                if (symbolTable.find(targetLabel) == symbolTable.end()) {
+                    throw std::runtime_error("Undefined label: " + targetLabel);
+                }
+                Word targetPC = symbolTable[targetLabel];
+                int32_t byteOffset = static_cast<int32_t>(targetPC) - static_cast<int32_t>(pc);
+                int32_t wordOffset = byteOffset >> 2;
+
+                Opcode op = (baseMnemonic == "cbeq") ? OP_CBEQ : OP_CBGT;
+
+                bool isImm = false;
+                RegId rs2 = 0;
+                int32_t immVal = 0;
+                try {
+                    rs2 = parseRegister(op2);
+                } catch (...) {
+                    isImm = true;
+                    immVal = parseImmediate(op2);
+                }
+
+                if (!isImm) {
+                    code = encodeCompareBranchReg(op, rs1, rs2, wordOffset);
+                } else {
+                    code = encodeCompareBranchImm(op, rs1, static_cast<int8_t>(immVal), wordOffset);
+                }
             }
             // 5. Load / Store: ld rd, imm[rs1] | st rd, imm[rs1]
             else if (baseMnemonic == "ld" || baseMnemonic == "st") {
@@ -353,6 +407,9 @@ public:
                 else if (baseMnemonic == "lsl") op = OP_LSL;
                 else if (baseMnemonic == "lsr") op = OP_LSR;
                 else if (baseMnemonic == "asr") op = OP_ASR;
+                else if (baseMnemonic == "min") op = OP_MIN;
+                else if (baseMnemonic == "max") op = OP_MAX;
+                else if (baseMnemonic == "rots") op = OP_ROTS;
                 else {
                     throw std::runtime_error("Unknown mnemonic: " + baseMnemonic);
                 }

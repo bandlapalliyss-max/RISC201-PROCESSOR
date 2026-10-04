@@ -21,12 +21,16 @@ struct Latch_IF_OF {
     Word pc{0};
     Word instruction{0};
     bool isBubble{true};
+    bool predictedTaken{false};
+    Word predictedTarget{0};
     std::string disassembly{"nop"};
 
     void reset() {
         pc = 0;
         instruction = 0;
         isBubble = true;
+        predictedTaken = false;
+        predictedTarget = 0;
         disassembly = "nop";
     }
 };
@@ -41,6 +45,8 @@ struct Latch_OF_EX {
     Word immx{0};          // Sign-extended/modified immediate
     Word branchTarget{0};  // Precomputed branch target PC + (offset << 2)
     bool isImmediate{false};
+    bool predictedTaken{false};
+    Word predictedTarget{0};
     bool isBubble{true};
     std::string disassembly{"nop"};
 
@@ -50,6 +56,8 @@ struct Latch_OF_EX {
         decoded = DecodedInst{};
         op1 = op2 = immx = branchTarget = 0;
         isImmediate = false;
+        predictedTaken = false;
+        predictedTarget = 0;
         isBubble = true;
         disassembly = "nop";
     }

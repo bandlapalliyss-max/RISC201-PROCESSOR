@@ -96,7 +96,7 @@ public:
 
             case OP_CMP: {
                 // cmp performs subtraction (A - B) and sets flags.E and flags.GT (Sarangi Section 3.3.4 & 9.2.4)
-                auto [diff, cout, ovf] = subtract32(a, b);
+                Word diff = std::get<0>(subtract32(a, b));
                 out.result = diff;
                 out.flags.E = (diff == 0);
                 // Signed comparison: A > B if (diff > 0) with respect to 2's complement
@@ -126,8 +126,7 @@ public:
                     out.result = 0;
                 } else {
                     bool useNonRestoring = (config.divAlgo == DividerAlgorithm::NON_RESTORING);
-                    auto [quot, rem, divZero] = divideSigned(a, b, useNonRestoring);
-                    out.result = quot;
+                    out.result = std::get<0>(divideSigned(a, b, useNonRestoring));
                 }
                 break;
             }
@@ -139,8 +138,7 @@ public:
                     out.result = 0;
                 } else {
                     bool useNonRestoring = (config.divAlgo == DividerAlgorithm::NON_RESTORING);
-                    auto [quot, rem, divZero] = divideSigned(a, b, useNonRestoring);
-                    out.result = rem;
+                    out.result = std::get<1>(divideSigned(a, b, useNonRestoring));
                 }
                 break;
             }
@@ -179,6 +177,30 @@ public:
 
             case OP_ASR: {
                 out.result = BarrelShifter::shift(a, b, BarrelShifter::ShiftType::ASR);
+                break;
+            }
+
+            case OP_MIN: {
+                int32_t sa = static_cast<int32_t>(a);
+                int32_t sb = static_cast<int32_t>(b);
+                out.result = (sa < sb) ? a : b;
+                out.flags.E = (out.result == 0);
+                out.flags.GT = (sa > sb);
+                break;
+            }
+
+            case OP_MAX: {
+                int32_t sa = static_cast<int32_t>(a);
+                int32_t sb = static_cast<int32_t>(b);
+                out.result = (sa > sb) ? a : b;
+                out.flags.E = (out.result == 0);
+                out.flags.GT = (sa > sb);
+                break;
+            }
+
+            case OP_ROTS: {
+                out.result = BarrelShifter::rotateRight(a, b);
+                out.flags.E = (out.result == 0);
                 break;
             }
 

@@ -24,12 +24,16 @@ struct Latch_IF_ID {
     Word pc{0};
     Word instruction{0};
     bool isBubble{true};
+    bool predictedTaken{false};
+    Word predictedTarget{0};
     std::string disassembly{"nop"};
 
     void reset() {
         pc = 0;
         instruction = 0;
         isBubble = true;
+        predictedTaken = false;
+        predictedTarget = 0;
         disassembly = "nop";
     }
 };
@@ -42,6 +46,8 @@ struct Latch_ID_RF {
     Word immx{0};          // 32-bit expanded immediate
     Word branchTarget{0};  // PC + (offset << 2)
     bool isImmediate{false};
+    bool predictedTaken{false};
+    Word predictedTarget{0};
     bool isBubble{true};
     std::string disassembly{"nop"};
 
@@ -51,6 +57,8 @@ struct Latch_ID_RF {
         decoded = DecodedInst{};
         immx = branchTarget = 0;
         isImmediate = false;
+        predictedTaken = false;
+        predictedTarget = 0;
         isBubble = true;
         disassembly = "nop";
     }
@@ -66,6 +74,8 @@ struct Latch_RF_EX {
     Word immx{0};
     Word branchTarget{0};
     bool isImmediate{false};
+    bool predictedTaken{false};
+    Word predictedTarget{0};
     bool isBubble{true};
     std::string disassembly{"nop"};
 
@@ -75,6 +85,8 @@ struct Latch_RF_EX {
         decoded = DecodedInst{};
         op1 = op2 = immx = branchTarget = 0;
         isImmediate = false;
+        predictedTaken = false;
+        predictedTarget = 0;
         isBubble = true;
         disassembly = "nop";
     }

@@ -40,6 +40,26 @@ public:
             return d;
         }
 
+        // Fused Compare-and-Branch format: cbeq, cbgt
+        if (d.opcode == OP_CBEQ || d.opcode == OP_CBGT) {
+            d.format = InstFormat::BRANCH;
+            d.isImmediate = ((word >> 26) & 1) != 0;
+            d.rs1 = static_cast<RegId>((word >> 22) & 0xF);
+            if (!d.isImmediate) {
+                d.rs2 = static_cast<RegId>((word >> 18) & 0xF);
+            } else {
+                int16_t imm4 = static_cast<int16_t>((word >> 18) & 0xF);
+                if (imm4 & 0x8) imm4 |= 0xFFF0;
+                d.imm16 = imm4;
+                d.immx = static_cast<Word>(static_cast<int32_t>(imm4));
+            }
+            int32_t offset18 = static_cast<int32_t>(word & 0x3FFFF);
+            if (offset18 & 0x20000) offset18 |= 0xFFFC0000;
+            d.branchOffset = offset18;
+            d.branchTarget = pc + (offset18 << 2);
+            return d;
+        }
+
         // Otherwise: Register or Immediate format
         d.isImmediate = ((word >> 26) & 1) != 0;
         d.format = d.isImmediate ? InstFormat::IMMEDIATE : InstFormat::REGISTER;
@@ -131,6 +151,19 @@ public:
                 else oss << getReg(d.rs2);
                 return oss.str();
 
+            case OP_CBEQ:
+            case OP_CBGT: {
+                std::string opName = (d.opcode == OP_CBEQ) ? "cbeq" : "cbgt";
+                oss << opName << " " << getReg(d.rs1) << ", ";
+                if (d.isImmediate) oss << d.imm16;
+                else oss << getReg(d.rs2);
+                oss << ", ";
+                if (d.branchOffset >= 0) oss << "+" << (d.branchOffset << 2);
+                else oss << (d.branchOffset << 2);
+                oss << " [target: " << toHex(d.branchTarget) << "]";
+                return oss.str();
+            }
+
             default: {
                 std::string opName;
                 switch (d.opcode) {
@@ -144,6 +177,9 @@ public:
                     case OP_LSL: opName = "lsl"; break;
                     case OP_LSR: opName = "lsr"; break;
                     case OP_ASR: opName = "asr"; break;
+                    case OP_MIN: opName = "min"; break;
+                    case OP_MAX: opName = "max"; break;
+                    case OP_ROTS: opName = "rots"; break;
                     default: return "unknown (" + toHex(word) + ")";
                 }
                 oss << opName << getImmSuffix(d.modifier) << " "

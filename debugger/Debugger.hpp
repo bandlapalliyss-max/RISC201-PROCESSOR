@@ -18,6 +18,7 @@
 #include <vector>
 #include <set>
 #include <iostream>
+#include <fstream>
 #include <sstream>
 #include <iomanip>
 
@@ -54,15 +55,63 @@ public:
     Debugger()
         : p4(1024 * 1024), p6(1024 * 1024), mcu(&p4.regFile, &p4.memory, &p4.aluUnit) {}
 
-    bool loadAssemblyString(const std::string& source) {
+    static std::string getDefaultSampleProgram() {
+        return R"(
+; RISC201 Demonstration Assembly Program
+; Demonstrates full-descending stack macros (push/pop),
+; arithmetic ALU instructions, and loop control
+.text
+    mov r0, 5        ; Compute factorial of 5
+    call .factorial
+    mov r2, r1       ; r2 = result (5! = 120 = 0x78)
+    b .done
+
+.factorial:
+    cmp r0, 1
+    beq .base_case
+    bgt .recurse
+    mov r1, 1
+    ret
+
+.base_case:
+    mov r1, 1
+    ret
+
+.recurse:
+    ; Use stack preprocessor macro for full-descending stack push
+    push r0          ; expands to: sub sp, sp, 4 ; st r0, 0[sp]
+    push ra          ; expands to: sub sp, sp, 4 ; st ra, 0[sp]
+    sub r0, r0, 1    ; n = n - 1
+    call .factorial  ; factorial(n-1) in r1
+    pop ra           ; expands to: ld ra, 0[sp] ; add sp, sp, 4
+    pop r0           ; expands to: ld r0, 0[sp] ; add sp, sp, 4
+    mul r1, r0, r1   ; r1 = n * factorial(n-1)
+    ret
+
+.done:
+    nop
+)";
+    }
+
+    bool loadAssemblyString(const std::string& source, bool printListing = true) {
         loadedProgramSource = source;
-        bool ok = asmEngine.assemble(source);
-        if (!ok) {
-            std::cerr << "Assembly failed!\n";
+        try {
+            bool ok = asmEngine.assemble(source);
+            if (!ok) {
+                std::cerr << "Assembly failed!\n";
+                return false;
+            }
+        } catch (const std::exception& e) {
+            std::cerr << "Assembly Error: " << e.what() << "\n";
             return false;
         }
 
         auto words = asmEngine.getMachineWords();
+        if (words.empty()) {
+            std::cerr << "No executable machine instructions produced.\n";
+            return false;
+        }
+
         Word progSize = static_cast<Word>(words.size() * 4);
 
         // Load into both pipeline memories and MCU memory
@@ -77,9 +126,94 @@ public:
         mcu.reset();
         mcu.setPC(0);
 
-        std::cout << "Successfully assembled and loaded " << words.size()
+        if (printListing) {
+            std::cout << "\n=== Two-Pass Assembler Output ===\n";
+            std::cout << asmEngine.getListing();
+
+            if (!asmEngine.symbolTable.empty()) {
+                std::cout << "\n--- Symbol Table ---\n";
+                for (const auto& kv : asmEngine.symbolTable) {
+                    std::cout << "  " << std::left << std::setw(20) << kv.first << " : " << toHex(kv.second) << "\n";
+                }
+                std::cout << "--------------------\n";
+            }
+        }
+
+        std::cout << "\nSuccessfully assembled and loaded " << words.size()
                   << " instructions (" << (words.size() * 4) << " bytes) at address 0x00000000.\n";
         return true;
+    }
+
+    bool promptAndLoadAssembly() {
+        std::cout << "\n------------------------------------------------------------------------\n"
+                  << "Enter RISC201 Assembly code (Type code lines, then 'END' or 'RUN' on a new line;\n"
+                  << "or enter a file path e.g. 'benchmarks/factorial_iter.s'):\n"
+                  << "------------------------------------------------------------------------\n";
+        std::string source;
+        std::string line;
+        while (std::getline(std::cin, line)) {
+            std::string trimmed = assembler::MacroPreprocessor::trim(line);
+            std::string upper = trimmed;
+            std::transform(upper.begin(), upper.end(), upper.begin(), ::toupper);
+            if (upper == "END" || upper == "RUN") {
+                break;
+            }
+            if (source.empty() && !trimmed.empty()) {
+                std::ifstream testFile(trimmed);
+                if (testFile.is_open()) {
+                    std::stringstream buf;
+                    buf << testFile.rdbuf();
+                    source = buf.str();
+                    std::cout << "Loaded assembly from file: " << trimmed << "\n";
+                    break;
+                }
+            }
+            source += line + "\n";
+        }
+        if (assembler::MacroPreprocessor::trim(source).empty()) {
+            std::cout << "No code entered.\n";
+            return false;
+        }
+        return loadAssemblyString(source);
+    }
+
+    void runWithTrace(uint64_t maxCycles = 1000) {
+        uint64_t stepCount = 0;
+        std::string modeStr = (currentSimMode == SimMode::PIPELINE_4STAGE) ? "4-Stage Pipeline" :
+                              (currentSimMode == SimMode::PIPELINE_6STAGE) ? "6-Stage Pipeline" :
+                              "Microprogrammed Control Unit";
+        std::cout << "\n==========================================================================\n"
+                  << "  STARTING EXECUTION TRACE (" << modeStr << ")\n"
+                  << "==========================================================================\n";
+
+        while (stepCount < maxCycles) {
+            Word currentPc = (currentSimMode == SimMode::PIPELINE_4STAGE) ? p4.pc :
+                             (currentSimMode == SimMode::PIPELINE_6STAGE) ? p6.pc : mcu.getPC();
+
+            if (stepCount > 0 && breakpoints.find(currentPc) != breakpoints.end()) {
+                std::cout << "\n[!] Hit breakpoint at " << toHex(currentPc) << "!\n";
+                break;
+            }
+
+            if (currentSimMode == SimMode::PIPELINE_4STAGE) {
+                if (p4.halted || p4.isDrained()) break;
+            } else if (currentSimMode == SimMode::PIPELINE_6STAGE) {
+                if (p6.halted || p6.isDrained()) break;
+            } else {
+                if (mcu.pc >= p4.memory.getSize() || (mcu.ir == 0 && mcu.upc == 0 && stepCount > 0)) break;
+            }
+
+            stepCycle();
+            stepCount++;
+        }
+
+        std::cout << "\n>>> Program Execution Completed (" << stepCount << " cycles) <<<\n\n";
+        std::cout << "=== Register File State ===\n";
+        showRegisters();
+        std::cout << "\n=== Active Stack Memory State ===\n";
+        showStack();
+        std::cout << "\n=== Performance & Hazard Statistics ===\n";
+        showStats();
     }
 
     void setBreakpoint(Word addr) {
@@ -270,6 +404,7 @@ public:
                   << "  s, step                 : Step one clock cycle / micro-cycle\n"
                   << "  si, step_inst           : Step one complete program instruction\n"
                   << "  r, run                  : Run program to completion or breakpoint\n"
+                  << "  trace                   : Run with cycle-by-cycle pipeline visualization\n"
                   << "  c, continue             : Continue running from current state\n"
                   << "  b, break <addr|label>   : Set breakpoint (e.g. b 0x10 or b .loop)\n"
                   << "  db, delbreak <addr>     : Delete breakpoint at address\n"
@@ -280,9 +415,12 @@ public:
                   << "  mode <4|6|micro>        : Switch core: 4-stage, 6-stage, or microcode\n"
                   << "  micro_mode <horiz|vert> : Switch horizontal vs vertical microcode\n"
                   << "  forwarding <on|off>     : Enable/disable pipeline data forwarding\n"
+                  << "  bp <not_taken|1bit>     : Select branch predictor (static vs 1-bit dynamic)\n"
                   << "  adder <rca|csla|cla>    : Select ALU adder algorithm\n"
                   << "  mul <iter|booth|wallace>: Select ALU multiplier algorithm\n"
                   << "  div <rest|nonrest>      : Select ALU divider algorithm\n"
+                  << "  asm, input, load        : Input & assemble a new program interactively\n"
+                  << "  reset, reload           : Reset simulation state to initial program\n"
                   << "  mem <start_hex> <count> : Dump memory words (e.g. mem 0x0 8)\n"
                   << "  disasm <start> <count>  : Disassemble memory instructions\n"
                   << "  stats                   : Display performance & hazard counters\n"
@@ -318,6 +456,15 @@ public:
                 stepInstruction();
             } else if (cmd == "r" || cmd == "run" || cmd == "c" || cmd == "continue") {
                 run();
+            } else if (cmd == "trace") {
+                runWithTrace();
+            } else if (cmd == "asm" || cmd == "input" || cmd == "load") {
+                if (promptAndLoadAssembly()) {
+                    runWithTrace();
+                }
+            } else if (cmd == "reset" || cmd == "reload") {
+                loadAssemblyString(loadedProgramSource);
+                std::cout << "Processor state successfully reset to program start.\n";
             } else if (cmd == "regs") {
                 showRegisters();
             } else if (cmd == "p" || cmd == "pipeline") {
@@ -369,6 +516,20 @@ public:
                 p4.setForwarding(enable);
                 p6.setForwarding(enable);
                 std::cout << "Pipeline data forwarding: " << (enable ? "ENABLED" : "DISABLED") << "\n";
+            } else if (cmd == "bp" || cmd == "pred" || cmd == "branch_pred") {
+                std::string mode;
+                ss >> mode;
+                if (mode == "not_taken" || mode == "static" || mode == "0") {
+                    p4.setBranchPredictorMode(BranchPredictorMode::ALWAYS_NOT_TAKEN);
+                    p6.setBranchPredictorMode(BranchPredictorMode::ALWAYS_NOT_TAKEN);
+                    std::cout << "Branch predictor set to: ALWAYS-NOT-TAKEN (Static Baseline)\n";
+                } else if (mode == "1bit" || mode == "dynamic" || mode == "1") {
+                    p4.setBranchPredictorMode(BranchPredictorMode::ONE_BIT);
+                    p6.setBranchPredictorMode(BranchPredictorMode::ONE_BIT);
+                    std::cout << "Branch predictor set to: 1-BIT DYNAMIC (128-entry BHT + BTB)\n";
+                } else {
+                    std::cout << "Usage: bp <not_taken|1bit>\n";
+                }
             } else if (cmd == "adder") {
                 std::string algo;
                 ss >> algo;
