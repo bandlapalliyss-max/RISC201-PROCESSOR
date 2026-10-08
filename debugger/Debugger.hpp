@@ -31,15 +31,7 @@ enum class SimMode {
     MICROCODED
 };
 
-/**
- * Interactive Command-Line Debugger & Execution Simulator (Requirements 2c, 2d, 3).
- * Supports:
- *   - 4-Stage and 6-Stage pipeline execution & visualization
- *   - Direct microprogrammed control logic execution with step-by-step microPC state
- *   - Active Stack Memory ASCII visualizer & boundary verification
- *   - Breakpoint management, memory inspection, and register inspection
- *   - Configurable ALU algorithms (RCA, CSLA, CLA; Iterative, Booth, Wallace; Restoring, Non-restoring)
- */
+
 class Debugger {
 public:
     stage4::Pipeline4Stage p4;
