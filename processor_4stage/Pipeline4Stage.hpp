@@ -28,17 +28,16 @@ public:
     bool halted{false};
     CpuException currentException{};
 
-    // Pipeline Latches
+    // two latches were used so that one stage will not see the value produced in the other stage in the same cycle 
     Latch_IF_OF l_IF_OF{};
     Latch_OF_EX l_OF_EX{};
     Latch_EX_MARW l_EX_MARW{};
 
-    // Next cycle latch buffers (to model edge-triggered synchronous transfers)
     Latch_IF_OF next_IF_OF{};
     Latch_OF_EX next_OF_EX{};
     Latch_EX_MARW next_EX_MARW{};
 
-    // Performance Counters
+    // terms that are to be shown at end after each these are updated 
     uint64_t cycles{0};
     uint64_t retiredInstructions{0};
     uint64_t stallCycles{0};
@@ -46,7 +45,6 @@ public:
     uint64_t branchCount{0};
     uint64_t branchTakenCount{0};
 
-    // Forwarding Enable toggle (for evaluation comparison)
     bool forwardingEnabled{true};
 
 public:
@@ -55,6 +53,7 @@ public:
         reset();
     }
 
+    //if we have entered reset button the complete vallues comes to the initial stage.
     void reset() {
         regFile.reset();
         memory.reset();
@@ -78,36 +77,30 @@ public:
         branchCount = 0;
         branchTakenCount = 0;
     }
-
+    // here we will be selecting the size and setting whether the forwarding is enabled or not and which type of predictor is being used.
     void setProgramSize(Word sz) { programSize = sz; }
     void setForwarding(bool enable) { forwardingEnabled = enable; }
     bool isForwardingEnabled() const { return forwardingEnabled; }
     void setBranchPredictorMode(BranchPredictorMode m) { branchPredictor.setMode(m); }
     BranchPredictorMode getBranchPredictorMode() const { return branchPredictor.getMode(); }
 
-    // Check if pipeline has completely drained (no valid instructions in flight)
+    // check whether in all stages there is no instruction so that we can end the cycles
     bool isDrained() const {
         return (programSize > 0 && pc >= programSize) &&
                l_IF_OF.isBubble && l_OF_EX.isBubble && l_EX_MARW.isBubble;
     }
-
-    /**
-     * Execute one clock cycle of the 4-stage pipeline.
-     */
+    // executing one cycle 
     void stepCycle() {
         if (halted) return;
         cycles++;
-
-        // Control Signals for current cycle
+        
         bool stall_IF = false;
         bool stall_OF = false;
         bool bubble_EX = false;
         bool isBranchTaken = false;
         Word branchPC = 0;
-
-        // =========================================================================
-        // STAGE 4: MA_RW (Memory Access and Register Writeback Merged)
-        // =========================================================================
+        
+        //stage 4 MA
         if (!l_EX_MARW.isBubble) {
             const auto& d = l_EX_MARW.decoded;
             Word writebackData = l_EX_MARW.aluResult;
@@ -130,19 +123,13 @@ public:
 
             retiredInstructions++;
         }
-
-        // =========================================================================
-        // STAGE 3: EX (Execute Stage)
-        // =========================================================================
+        //EX stage execution 
         if (!l_OF_EX.isBubble) {
-            const auto& d = l_OF_EX.decoded;
-
-            // Determine operand A with Forwarding
+            const auto& d = l_OF_EX.decoded; 
             Word opA = l_OF_EX.op1;
             if (forwardingEnabled && !l_EX_MARW.isBubble && l_EX_MARW.decoded.writesRegister()) {
                 RegId destPrev = l_EX_MARW.decoded.getDestReg();
                 if (d.readsRs1() && d.rs1 == destPrev) {
-                    // Forwarded value from previous instruction (ALU result or Load result)
                     if (l_EX_MARW.decoded.isLoad()) {
                         opA = memory.readWord(l_EX_MARW.aluResult, nullptr);
                     } else if (l_EX_MARW.decoded.isCall()) {
@@ -152,8 +139,6 @@ public:
                     }
                 }
             }
-
-            // Determine operand B with Forwarding
             Word opB = l_OF_EX.isImmediate ? l_OF_EX.immx : l_OF_EX.op2;
             if (!l_OF_EX.isImmediate && forwardingEnabled && !l_EX_MARW.isBubble && l_EX_MARW.decoded.writesRegister()) {
                 RegId destPrev = l_EX_MARW.decoded.getDestReg();
@@ -167,8 +152,6 @@ public:
                     }
                 }
             }
-
-            // Store instruction data forwarding (st rd, imm[rs1] stores rd)
             Word storeData = l_OF_EX.op2;
             if (d.isStore() && forwardingEnabled && !l_EX_MARW.isBubble && l_EX_MARW.decoded.writesRegister()) {
                 if (d.rd == l_EX_MARW.decoded.getDestReg()) {
@@ -180,7 +163,6 @@ public:
                 }
             }
 
-            // Execute in ALU
             auto aluOut = aluUnit.execute(d.opcode, opA, opB, regFile.getFlags());
             if (d.opcode == OP_CMP) {
                 regFile.setFlags(aluOut.flags);
@@ -228,8 +210,7 @@ public:
 
                 branchPredictor.update(l_OF_EX.pc, isBranchTaken, branchPC, l_OF_EX.predictedTaken);
             }
-
-            // Prepare next EX_MARW latch
+            // writing the next instructions after EX stage 
             next_EX_MARW.pc = l_OF_EX.pc;
             next_EX_MARW.instruction = l_OF_EX.instruction;
             next_EX_MARW.decoded = d;
@@ -241,14 +222,10 @@ public:
             next_EX_MARW.reset();
         }
 
-        // =========================================================================
-        // STAGE 2: OF (Operand Fetch / Instruction Decode)
-        // =========================================================================
         if (!l_IF_OF.isBubble) {
             DecodedInst d = assembler::Disassembler::decode(l_IF_OF.instruction, l_IF_OF.pc);
 
-            // Hazard Detection Unit:
-            // Check for Load-Use Hazard (Instruction in EX is LD and OF needs loaded register)
+            // checking for hazaards here 
             bool loadUseHazard = false;
             if (!l_OF_EX.isBubble && l_OF_EX.decoded.isLoad()) {
                 RegId loadDest = l_OF_EX.decoded.rd;
@@ -258,8 +235,7 @@ public:
                     loadUseHazard = true;
                 }
             }
-
-            // If forwarding is disabled, stall for ANY RAW dependency until previous instruction clears EX
+            // checking for raw hazards ther or not 
             bool rawHazardNoForward = false;
             if (!forwardingEnabled) {
                 if (!l_OF_EX.isBubble && l_OF_EX.decoded.writesRegister()) {
@@ -271,19 +247,17 @@ public:
                     }
                 }
             }
-
+            //if hazards are there then add stalls 
             if (loadUseHazard || rawHazardNoForward) {
-                // Interlock: Stall IF and OF, insert bubble into EX
                 stall_IF = true;
                 stall_OF = true;
                 bubble_EX = true;
                 stallCycles++;
             } else {
-                // Read register operands
+                // Reading register operands 
                 Word op1 = regFile.readPort1(d.isRet() ? REG_RA : d.rs1);
                 Word op2 = regFile.readPort2(d.isStore() ? d.rd : d.rs2);
-
-                // Forwarding from MA_RW writeback port into OF stage if write & read same cycle (RW->OF)
+                
                 if (forwardingEnabled && !l_EX_MARW.isBubble && l_EX_MARW.decoded.writesRegister()) {
                     RegId wbReg = l_EX_MARW.decoded.getDestReg();
                     Word wbData = l_EX_MARW.aluResult;
@@ -296,7 +270,7 @@ public:
                     if (d.readsRs2() && d.rs2 == wbReg) op2 = wbData;
                     if (d.isStore() && d.rd == wbReg) op2 = wbData;
                 }
-
+                // updating the values 
                 next_OF_EX.pc = l_IF_OF.pc;
                 next_OF_EX.instruction = l_IF_OF.instruction;
                 next_OF_EX.decoded = d;
@@ -313,10 +287,7 @@ public:
         } else {
             next_OF_EX.reset();
         }
-
-        // =========================================================================
-        // STAGE 1: IF (Instruction Fetch)
-        // =========================================================================
+        //checking whether mis prediction happened or not 
         bool mispredicted = false;
         if (!l_OF_EX.isBubble && l_OF_EX.decoded.isBranch()) {
             if (isBranchTaken != l_OF_EX.predictedTaken) {
@@ -326,14 +297,14 @@ public:
             }
         }
 
+        // is misprediction took place we are adding jump/flush 
         if (mispredicted) {
-            // Branch misprediction penalty / flush
             pc = isBranchTaken ? branchPC : (l_OF_EX.pc + 4);
-            next_IF_OF.reset(); // Flush IF
-            next_OF_EX.reset(); // Flush OF
+            next_IF_OF.reset(); // Flushing IP
+            next_OF_EX.reset();  //flushing OF
             bubbleCycles += 2;
         } else if (programSize > 0 && pc >= programSize) {
-            next_IF_OF.reset(); // Program completed, drain pipeline with bubbles
+            next_IF_OF.reset(); 
         } else if (!stall_IF) {
             Word instWord = memory.readWord(pc, &currentException);
             if (currentException.hasOccurred()) {
@@ -341,10 +312,10 @@ public:
                 halted = true;
                 return;
             }
-
+                                 
             Word fetchPC = pc;
             auto pred = branchPredictor.predict(fetchPC);
-
+            // again updating the fetch values 
             next_IF_OF.pc = fetchPC;
             next_IF_OF.instruction = instWord;
             next_IF_OF.isBubble = false;
@@ -358,8 +329,7 @@ public:
                 pc += 4;
             }
         }
-
-        // Commit synchronous latch updates
+        
         if (bubble_EX) {
             l_OF_EX.reset();
         } else if (!stall_OF) {
@@ -372,7 +342,7 @@ public:
         l_EX_MARW = next_EX_MARW;
     }
 
-    // Run until drained or breakpoint or max cycles
+    // if we type run then this makes the pipeline structure for us untill the pipeline is drained or untilll it reaches the max cycles 
     void run(uint64_t maxCycles = 100000) {
         while (!halted && cycles < maxCycles) {
             stepCycle();
