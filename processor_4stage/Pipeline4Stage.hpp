@@ -17,25 +17,12 @@
 namespace risc201 {
 namespace stage4 {
 
-/**
- * 4-Stage Pipelined Processor: IF -> OF -> EX -> MA_RW
- *
- * Stage Merging Decision:
- *   Memory Access (MA) and Register Writeback (RW) are merged into MA_RW.
- *   Rationale: In SimpleRisc, ALU operations do no memory access, only writeback.
- *   Load operations read from memory and can latch into the register file in the same
- *   phase. Merging eliminates a dedicated pipeline stage, reduces pipeline depth,
- *   decreases branch misprediction penalty to 2 cycles, and achieves lower CPI.
- */
 class Pipeline4Stage {
 public:
-    // Core hardware elements
     RegisterFile regFile;
     Memory memory;
     alu::ALU aluUnit;
     BranchPredictor branchPredictor;
-
-    // Architectural state
     Word pc{0};
     Word programSize{0};
     bool halted{false};
