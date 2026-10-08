@@ -34,7 +34,6 @@ enum class PrivRegId : uint8_t {
 };
 
 // SimpleRisc Opcode Definitions (5 bits, 0-31)
-// As specified in Sarangi Chapter 3 & 9, Table 3.10 / 9.2
 enum Opcode : uint8_t {
     OP_ADD  = 0b00000, // 0:  add  rd, rs1, (rs2/imm)
     OP_SUB  = 0b00001, // 1:  sub  rd, rs1, (rs2/imm)
@@ -70,7 +69,6 @@ enum Opcode : uint8_t {
 };
 
 // Immediate Modifier (2 bits, bits 17..16 of immediate field)
-// Sarangi Section 3.3.13:
 // 00: default sign-extended 16-bit
 // 01: 'u' unsigned 16-bit (upper 16 bits zeroed)
 // 10: 'h' high 16-bit (shifted left by 16 bits)
@@ -81,7 +79,7 @@ enum class ImmModifier : uint8_t {
     RESERVED = 0b11
 };
 
-// Instruction Formats (Sarangi Section 3.3.14, Table 3.11)
+// Instruction Formats 
 enum class InstFormat {
     REGISTER,  // 3-address register operand (I=0)
     IMMEDIATE, // 3-address with immediate operand (I=1)
@@ -103,7 +101,6 @@ struct DecodedInst {
     int32_t branchOffset{0}; // Signed 27-bit word offset
     Word branchTarget{0};   // Computed branch target = PC + (offset << 2)
 
-    // Helper query functions
     bool isBranch() const {
         return opcode == OP_B || opcode == OP_BEQ || opcode == OP_BGT ||
                opcode == OP_CALL || opcode == OP_RET || opcode == OP_RETZ ||
@@ -139,8 +136,6 @@ struct DecodedInst {
         return opcode == OP_NOP;
     }
 
-    // Does this instruction write back to the register file?
-    // Sarangi Section 9.3: isWb is true for ALU, mov, ld, and call (writes ra)
     bool writesRegister() const {
         if (opcode == OP_NOP || opcode == OP_ST || opcode == OP_CMP ||
             opcode == OP_B || opcode == OP_BEQ || opcode == OP_BGT || opcode == OP_RET || opcode == OP_RETZ ||
@@ -156,7 +151,6 @@ struct DecodedInst {
         return rd;
     }
 
-    // Does instruction read rs1? (Not used for NOT, MOV, or branch formats except RET)
     bool readsRs1() const {
         if (opcode == OP_NOP || opcode == OP_B || opcode == OP_BEQ ||
             opcode == OP_BGT || opcode == OP_CALL || opcode == OP_NOT || opcode == OP_MOV) {
@@ -165,8 +159,6 @@ struct DecodedInst {
         // RET reads ra (REG_RA = 15)
         return true;
     }
-
-    // Does instruction read rs2? (Only when not immediate, and not store which reads rd as source data)
     bool readsRs2() const {
         if (isImmediate) return false;
         if (opcode == OP_NOP || opcode == OP_B || opcode == OP_BEQ ||
@@ -183,7 +175,6 @@ struct DecodedInst {
     }
 };
 
-// Flags Register Structure (Sarangi Section 3.3.2 & 9.2.4)
 struct Flags {
     bool E{false};  // Equal flag
     bool GT{false}; // Greater-Than flag
@@ -207,6 +198,6 @@ inline std::string toHex(Word val) {
     return oss.str();
 }
 
-} // namespace risc201
+} 
 
-#endif // RISC201_TYPES_HPP
+#endif 
