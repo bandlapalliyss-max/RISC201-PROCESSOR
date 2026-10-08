@@ -12,7 +12,6 @@
 namespace risc201 {
 namespace alu {
 
-// Supported hardware algorithms for evaluation (Requirement 5)
 enum class AdderAlgorithm {
     RIPPLE_CARRY,
     CARRY_SELECT,
